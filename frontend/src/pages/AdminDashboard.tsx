@@ -3,7 +3,7 @@ import { api } from "../lib/api";
 import { Activity, Monitor, DollarSign, AlertTriangle, Radio } from "lucide-react";
 
 export function AdminDashboard({ sim }: { sim: any }) {
-  const [kis, setKpis] = useState<any>(null);
+  const [kpis, setKpis] = useState<any>(null);
   const [screens, setScreens] = useState<any[]>([]);
   const [incidents, setIncidents] = useState<any[]>([]);
 
