@@ -1,0 +1,61 @@
+# Render Blueprint – one-click deploy
+# https://render.com/docs/blueprint-spec
+# 
+# How to use:
+# 1. Push this repo to GitHub
+# 2. On Render → New → Blueprint → Connect the repo
+# 3. Render will create Postgres + Backend + Frontend automatically
+
+databases:
+  - name: airport-media-db
+    plan: free
+    databaseName: airport_media
+    user: airport
+
+services:
+  # ---------- Backend API ----------
+  - type: web
+    name: airport-media-api
+    runtime: docker
+    plan: free
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: airport-media-db
+          property: connectionString
+      - key: FLIGHT_SOURCE
+        value: mock-aidx
+      - key: SIMULATION_START
+        value: "2026-10-24T13:00:00Z"
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
+      - key: CORS_ORIGIN
+        # After first deploy, set this to your frontend URL (e.g. https://airport-media-web.onrender.com)
+        sync: false
+    disk:
+      name: data
+      mountPath: /app/data
+      sizeGB: 1
+
+  # ---------- Frontend ----------
+  - type: web
+    name: airport-media-web
+    runtime: node
+    plan: free
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    startCommand: npx vite preview --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: VITE_API_URL
+        # After backend is live, set to https://airport-media-api.onrender.com
+        sync: false
+      - key: VITE_WS_URL
+        # After backend is live, set to wss://airport-media-api.onrender.com
+        sync: false
+      - key: NODE_ENV
+        value: production

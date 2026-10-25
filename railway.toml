@@ -1,0 +1,18 @@
+# Railway configuration
+# https://docs.railway.app/reference/config-as-code
+#
+# How to use:
+# 1. Push this repo to GitHub
+# 2. railway.app → New Project → Deploy from GitHub repo
+# 3. Railway detects the services; add a Postgres plugin
+# 4. Link DATABASE_URL and set the env vars below
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "backend/Dockerfile"
+
+[deploy]
+startCommand = "npx prisma db push && npx tsx prisma/seed.ts && npm run dev"
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"

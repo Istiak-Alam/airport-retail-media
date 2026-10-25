@@ -1,0 +1,301 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== AIRPORT STRUCTURE ====================
+
+model Terminal {
+  id        String   @id @default(cuid())
+  code      String   @unique // T1, T2
+  name      String
+  zones     Zone[]
+  screens   Screen[]
+  createdAt DateTime @default(now())
+}
+
+model Zone {
+  id           String        @id @default(cuid())
+  code         String        @unique // G40-45, Security-A, etc.
+  name         String
+  terminalId   String
+  terminal     Terminal      @relation(fields: [terminalId], references: [id])
+  type         ZoneType
+  gates        String[]      // nearest gates
+  screens      Screen[]
+  outlets      Outlet[]
+  presence     ZonePresence[]
+  createdAt    DateTime      @default(now())
+}
+
+enum ZoneType {
+  GATE_AREA
+  SECURITY
+  RETAIL
+  FOOD_COURT
+  LOUNGE
+  CORRIDOR
+  BAGGAGE
+}
+
+// ==================== FLIGHTS ====================
+
+model Flight {
+  id              String         @id @default(cuid())
+  flightNumber    String
+  airlineCode     String
+  airline         Airline        @relation(fields: [airlineCode], references: [code])
+  origin          String
+  destination     String
+  via             String?
+  scheduledDep    DateTime
+  estimatedDep    DateTime?
+  actualDep       DateTime?
+  scheduledArr    DateTime?
+  estimatedArr    DateTime?
+  actualArr       DateTime?
+  gate            String?
+  stand           String?
+  status          FlightStatus   @default(SCHEDULED)
+  delayMinutes    Int            @default(0)
+  paxCount        Int
+  aircraftType    String?
+  isInternational Boolean
+  isDeparture     Boolean        @default(true)
+  loadFactor      Float          @default(0.85)
+  events          FlightEvent[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([gate, scheduledDep])
+  @@index([airlineCode, scheduledDep])
+  @@index([status])
+}
+
+enum FlightStatus {
+  SCHEDULED
+  BOARDING
+  FINAL_CALL
+  DEPARTED
+  DELAYED
+  CANCELLED
+  DIVERTED
+  ARRIVED
+}
+
+model FlightEvent {
+  id        String   @id @default(cuid())
+  flightId  String
+  flight    Flight   @relation(fields: [flightId], references: [id])
+  type      String   // DELAY, GATE_CHANGE, STATUS_CHANGE, BOARDING_START
+  payload   Json
+  source    String   // AODB, AIDX
+  timestamp DateTime
+  createdAt DateTime @default(now())
+}
+
+// ==================== AIRLINES & OUTLETS ====================
+
+model Airline {
+  code        String   @id // XY, ZQ
+  name        String
+  type        String   // low-cost, full-service
+  logoUrl     String?
+  flights     Flight[]
+  campaigns   Campaign[]
+  createdAt   DateTime @default(now())
+}
+
+model Advertiser {
+  id        String     @id @default(cuid())
+  name      String
+  type      String     // retailer, fb, airline, brand
+  outlets   Outlet[]
+  campaigns Campaign[]
+  createdAt DateTime   @default(now())
+}
+
+model Outlet {
+  id           String     @id @default(cuid())
+  name         String
+  advertiserId String
+  advertiser   Advertiser @relation(fields: [advertiserId], references: [id])
+  zoneId       String?
+  zone         Zone?      @relation(fields: [zoneId], references: [id])
+  category     String     // duty-free, coffee, toys, perfume, lounge
+  createdAt    DateTime   @default(now())
+}
+
+// ==================== SCREENS ====================
+
+model Screen {
+  id            String      @id @default(cuid())
+  code          String      @unique // SCR-G42-01
+  name          String
+  terminalId    String
+  terminal      Terminal    @relation(fields: [terminalId], references: [id])
+  zoneId        String
+  zone          Zone        @relation(fields: [zoneId], references: [id])
+  nearestGates  String[]
+  size          String      // 55", 75"
+  orientation   String      // 9:16, 16:9
+  status        ScreenStatus @default(ONLINE)
+  lastSeenAt    DateTime?
+  impressions   Impression[]
+  decisions     AdDecision[]
+  createdAt     DateTime    @default(now())
+}
+
+enum ScreenStatus {
+  ONLINE
+  DEGRADED
+  OFFLINE
+}
+
+// ==================== CAMPAIGNS & CREATIVES ====================
+
+model Campaign {
+  id              String         @id @default(cuid())
+  name            String
+  advertiserId    String
+  advertiser      Advertiser     @relation(fields: [advertiserId], references: [id])
+  airlineCode     String?
+  airline         Airline?       @relation(fields: [airlineCode], references: [code])
+  status          CampaignStatus @default(DRAFT)
+  startAt         DateTime
+  endAt           DateTime
+  budgetCents     Int
+  dailyCapCents   Int?
+  spentCents      Int            @default(0)
+  frequencyCap    Int            @default(3) // per screen per hour
+  hardFilters     Json           // { internationalOnly, destinations[], minDwell, minCrowd }
+  segmentWeights  Json           // { family: 1.0, holiday: 0.8, business: 0.1 }
+  placementZones  String[]
+  placementScreens String[]
+  triggers        Json?          // delay rules etc.
+  creatives       Creative[]
+  promoCodes      PromoCode[]
+  impressions     Impression[]
+  redemptions     Redemption[]
+  decisions       AdDecision[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+}
+
+enum CampaignStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  ACTIVE
+  PAUSED
+  COMPLETED
+  REJECTED
+}
+
+model Creative {
+  id          String   @id @default(cuid())
+  campaignId  String
+  campaign    Campaign @relation(fields: [campaignId], references: [id])
+  name        String
+  template    String   // template id
+  headline    String
+  body        String?
+  cta         String?
+  imageUrl    String?
+  language    String   @default("en")
+  approved    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model PromoCode {
+  id          String    @id @default(cuid())
+  campaignId  String
+  campaign    Campaign  @relation(fields: [campaignId], references: [id])
+  code        String
+  expiresAt   DateTime
+  maxUses     Int       @default(1000)
+  usedCount   Int       @default(0)
+  flightId    String?   // linked to specific flight boarding
+  createdAt   DateTime  @default(now())
+}
+
+// ==================== METRICS ====================
+
+model Impression {
+  id          String   @id @default(cuid())
+  screenId    String
+  screen      Screen   @relation(fields: [screenId], references: [id])
+  campaignId  String
+  campaign    Campaign @relation(fields: [campaignId], references: [id])
+  decisionId  String?
+  timestamp   DateTime
+  zonePresence Json?   // snapshot of crowd profile
+  createdAt   DateTime @default(now())
+
+  @@index([screenId, timestamp])
+  @@index([campaignId, timestamp])
+}
+
+model Redemption {
+  id          String   @id @default(cuid())
+  campaignId  String
+  campaign    Campaign @relation(fields: [campaignId], references: [id])
+  promoCodeId String?
+  code        String
+  scannedAt   DateTime
+  deviceInfo  String?
+  createdAt   DateTime @default(now())
+}
+
+model AdDecision {
+  id            String   @id @default(cuid())
+  screenId      String
+  screen        Screen   @relation(fields: [screenId], references: [id])
+  campaignId    String?
+  campaign      Campaign? @relation(fields: [campaignId], references: [id])
+  timestamp     DateTime
+  crowdProfile  Json
+  candidates    Json     // scored list
+  winnerScore   Float?
+  reason        String
+  evidence      Json     // full evidence trail
+  rejectedAi    Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  @@index([screenId, timestamp])
+}
+
+// ==================== PRESENCE ====================
+
+model ZonePresence {
+  id            String   @id @default(cuid())
+  zoneId        String
+  zone          Zone     @relation(fields: [zoneId], references: [id])
+  windowStart   DateTime
+  windowEnd     DateTime
+  paxEstimate   Int
+  profile       Json     // aggregated shares
+  sourceFlights String[] // flight ids contributing
+  createdAt     DateTime @default(now())
+
+  @@index([zoneId, windowStart])
+}
+
+// ==================== INCIDENTS ====================
+
+model Incident {
+  id          String   @id @default(cuid())
+  type        String   // SCREEN_OFFLINE, FEED_LAG, CREATIVE_FAIL
+  severity    String   // LOW, MEDIUM, HIGH, CRITICAL
+  title       String
+  description String?
+  status      String   @default("OPEN") // OPEN, ACK, RESOLVED
+  owner       String?
+  entityId    String?  // screenId, etc.
+  raisedAt    DateTime @default(now())
+  resolvedAt  DateTime?
+}
